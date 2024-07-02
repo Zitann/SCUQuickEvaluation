@@ -91,6 +91,7 @@ class jwc:
         
 
     def get_pj_list(self):
+        os.system('cls')
         data = {
             'pageNum': '1',
             'pageSize': '30',
@@ -105,22 +106,28 @@ class jwc:
                 self.wjbm.append(data[i]['WJBM'])
         if(len(self.pj)==0):
             print('无待评教课程')
+            os.system('pause')
+            exit()
         else:
             print(f'总共{len(self.pj)}门待评教课程')
+            print()
             for i in range(len(self.pj)):
                 print(f'{i}.{self.pj[i]}')
             print()
             print(f'{len(self.pj)}.一键全部评教')
             print(f'{len(self.pj)+1}.退出')
             print()
-            ready = input('以空格分隔输入待评教课程编号：').strip()
-            if(int(ready[0])==len(self.pj)+1):
-                return
-            elif(int(ready[0])==len(self.pj)):
+            ready = list(map(int, input('请输入需要评教的课程编号(空格分隔)：').split(' ')))
+            if len(ready)==0:
+                print('未输入编号或输入错误，自动退出')
+                os.system('pause')
+                exit()
+            if(ready[0]==len(self.pj)+1):
+                exit()
+            elif(ready[0]==len(self.pj)):
                 for i in range(len(self.pj)):
                     self.pj_one(i)
             else:
-                ready = ready.split(' ')
                 for i in ready:
                     self.pj_one(int(i))
 
