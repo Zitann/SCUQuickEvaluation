@@ -95,10 +95,9 @@ async fn login(
     username: &str,
     password: &str,
 ) -> Result<String, reqwest::Error> {
-    let mut hasher = Md5::new();
-    hasher.update(password);
-    let result = hasher.finalize();
-    let hashed_password = format!("{:x}", result);
+    let hashed_password = format!("{:x}", Md5::digest(password));
+    let salted_password = format!("{:x}", Md5::digest(&(password.to_string() + "{Urp602019}")));
+    let hashed_password = format!("{}*{}", salted_password, hashed_password);
 
     let token = get_token(&client, TOKEN_URL).await.unwrap();
     let captcha = get_captcha(&client).await.unwrap();
@@ -117,7 +116,7 @@ async fn login(
     // 判断body中是否包含“欢迎您”
     let mut regex = Regex::new(r#"欢迎您"#).unwrap();
     if !regex.is_match(body.as_str()) {
-        regex = Regex::new(r#"<strong>发生错误！</strong>(.*?)!"#).unwrap();
+        regex = Regex::new(r#"<strong>发生错误！</strong>(.*?)[!|！]"#).unwrap();
         let error = regex
             .captures(body.as_str())
             .unwrap()
