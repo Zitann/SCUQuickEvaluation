@@ -1,19 +1,21 @@
-use base64::{Engine as _, engine::general_purpose};
+use base64::{engine::general_purpose, Engine as _};
 use md5::{Digest, Md5};
 use regex::Regex;
 use reqwest;
 use reqwest::header::{HeaderMap, HeaderValue, CONTENT_TYPE};
 use reqwest::multipart;
-use serde::{Deserialize, Serialize};
-use tokio;
-use std::io;
 use rpassword::read_password;
+use serde::{Deserialize, Serialize};
+use std::io;
+use tokio;
 
 const CAPTCHA_URL: &str = "http://zhjw.scu.edu.cn/img/captcha.jpg";
 const TOKEN_URL: &str = "http://zhjw.scu.edu.cn/login";
 const LOGIN_URL: &str = "http://zhjw.scu.edu.cn/j_spring_security_check";
 const OCR_URL: &str = "https://duomi.chenyipeng.com/captcha";
 const PJ_URL: &str = "http://zhjw.scu.edu.cn/student/teachingAssessment/evaluation/queryAll";
+const SCORE_URL: &str =
+    "http://zhjw.scu.edu.cn/student/integratedQuery/scoreQuery/allTermScores/index";
 
 #[derive(Serialize, Deserialize, Debug)]
 struct Record {
@@ -66,7 +68,7 @@ async fn get_token(client: &reqwest::Client, url: &str) -> Result<String, reqwes
 async fn get_captcha(client: &reqwest::Client) -> Result<String, reqwest::Error> {
     let res = client.get(CAPTCHA_URL).send().await?;
     let body = res.bytes().await?;
-    let base64_captcha =general_purpose::STANDARD.encode(&body);
+    let base64_captcha = general_purpose::STANDARD.encode(&body);
     let res = reqwest::Client::new()
         .post(OCR_URL)
         .form(&[
@@ -161,10 +163,7 @@ async fn get_pj_list(client: &reqwest::Client) -> Result<(), reqwest::Error> {
     // 清空控制台输出
     print!("\x1B[2J\x1B[1;1H");
     // 输出所有记录
-    println!(
-        "总共有 {} 门待评教课程",
-        records.iter().count()
-    );
+    println!("总共有 {} 门待评教课程", records.iter().count());
     println!("");
     for (i, record) in records.iter().enumerate() {
         println!("{}. {}", i + 1, record.kcm);
@@ -172,7 +171,7 @@ async fn get_pj_list(client: &reqwest::Client) -> Result<(), reqwest::Error> {
     println!("");
     println!("输入需要评教的课程编号(空格分隔)");
     println!("或输入 a 评教所有课程");
-    println!("或输入 0 退出");
+    println!("或输入 0 返回");
     println!("");
     println!("请输入：");
 
@@ -181,7 +180,7 @@ async fn get_pj_list(client: &reqwest::Client) -> Result<(), reqwest::Error> {
     let input = input.trim();
     // 清空控制台输出
     print!("\x1B[2J\x1B[1;1H");
-    if input == "0"||input == "" {
+    if input == "0" || input == "" {
         return Ok(());
     } else if input == "a" {
         println!("评教所有课程");
@@ -191,7 +190,7 @@ async fn get_pj_list(client: &reqwest::Client) -> Result<(), reqwest::Error> {
             pj_one(client, record).await.unwrap();
         }
         println!("");
-        println!("按回车键退出...");
+        println!("按回车键返回...");
         let mut input = String::new();
         let _ = io::stdin().read_line(&mut input);
     } else {
@@ -208,7 +207,7 @@ async fn get_pj_list(client: &reqwest::Client) -> Result<(), reqwest::Error> {
             }
         }
         println!("");
-        println!("按回车键退出...");
+        println!("按回车键返回...");
         let mut input = String::new();
         let _ = io::stdin().read_line(&mut input);
     }
@@ -277,9 +276,7 @@ async fn pj_one(client: &reqwest::Client, record: &Record) -> Result<(), reqwest
     let post_url = format!("http://zhjw.scu.edu.cn/student/teachingAssessment/baseInformation/questionsAdd/doSave?tokenValue={}", token.clone());
     let res = client.post(post_url).multipart(form).send().await?;
     let body = res.json::<serde_json::Value>().await?;
-    println!("{}", body);
     token = body["token"].to_string()[1..body["token"].to_string().len() - 1].to_string();
-    println!("{}", token);
 
     let form = multipart::Form::new()
         .text("tjcs", "1")
@@ -329,6 +326,73 @@ async fn pj_one(client: &reqwest::Client, record: &Record) -> Result<(), reqwest
     Ok(())
 }
 
+async fn get_score(client: &reqwest::Client) -> Result<(), reqwest::Error> {
+    let res = client.get(SCORE_URL).send().await?;
+    let body = res.text().await?;
+    let url = format!(
+        "http://zhjw.scu.edu.cn{}",
+        Regex::new(r#"var url = "(.*?)";"#)
+            .unwrap()
+            .captures(body.as_str())
+            .unwrap()
+            .get(1)
+            .unwrap()
+            .as_str()
+            .to_string()
+    );
+    let res = client
+        .post(url)
+        .form(&[
+            ("zxjxjhh", "2024-2025-1-1"),
+            ("pageNum", "1"),
+            ("pageSize", "30"),
+        ])
+        .send()
+        .await?;
+    let body = res.json::<serde_json::Value>().await?;
+    let scores = body["list"]["records"].as_array().unwrap();
+    print!("\x1B[2J\x1B[1;1H");
+    println!("共有 {} 门课程\n", scores.len());
+    for score in scores {
+        println!(
+            "{}\t{}",
+            score[11].as_str().unwrap(),
+            score[8].as_str().unwrap()
+        );
+    }
+    println!("\n按回车键返回...");
+    let mut input = String::new();
+    let _ = io::stdin().read_line(&mut input);
+    Ok(())
+}
+
+async fn state(client: &reqwest::Client) -> Result<(), reqwest::Error> {
+    loop {
+        print!("\x1B[2J\x1B[1;1H");
+        println!("1. 评教");
+        println!("2. 查看成绩");
+        println!("3. 退出\n");
+        println!("请输入功能序号：");
+        let mut input = String::new();
+        std::io::stdin().read_line(&mut input).unwrap();
+        let input = input.trim();
+        match input {
+            "1" => {
+                get_pj_list(&client).await.unwrap();
+            }
+            "2" => {
+                get_score(&client).await.unwrap();
+            }
+            "3" => {
+                return Ok(());
+            }
+            _ => {
+                println!("无效的输入");
+            }
+        }
+    }
+}
+
 #[tokio::main]
 async fn main() {
     let headers = generate_headers();
@@ -365,5 +429,5 @@ async fn main() {
         println!("登录失败次数过多，请稍后再试");
         return;
     }
-    get_pj_list(&client).await.unwrap();
+    state(&client).await.unwrap();
 }
